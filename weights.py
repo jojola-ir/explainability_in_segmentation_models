@@ -3,7 +3,7 @@ import timm
 import torch
 from models import VisionTransformer
 
-IMG_SIZE = 384
+IMG_SIZE = 224
 
 # Helpers
 def get_n_params(module):

@@ -10,7 +10,7 @@ from torch.autograd import Variable
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.misc
+import timm
 from PIL import Image
 
 from dataloader import load_image, transformations
@@ -21,7 +21,7 @@ from weights import load_weights
 
 def model_builder(model_name):
     if model_name == "ViT":
-        model = load_weights(model_name, save=False)
+        model = load_weights("vit_base_patch16_224", save=False)
     elif model_name == "vgg16":
         model = models.vgg16(pretrained=True)
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     weights, layers, count = architecture(model)
 
     model = model.to(device)
-
+    print(model)
     data_path = "../datasets/birds/"
     results_path = "results/"
 
@@ -72,10 +72,10 @@ if __name__ == "__main__":
     image_path = join(data_path)
 
     for root, dir, files in os.walk(data_path):
-        if len(dir):
+        """if len(dir):
             for d in dir:
                 if not os.path.exists(join(results_path, d)):
-                    os.makedirs(results_path + d)
+                    os.makedirs(results_path + d)"""
 
         for f in files:
             if f.endswith(".jpg"):
@@ -88,5 +88,4 @@ if __name__ == "__main__":
                 d = root.split("/")[-1]
                 print("Processing {}/{}".format(d, f))
 
-                if model_name == "vgg16":
-                    feature_maps(image, f, d, layers)
+                feature_maps(model, image, f, d, model_name)

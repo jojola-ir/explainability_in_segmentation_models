@@ -10,7 +10,7 @@ import scipy.misc
 from PIL import Image
 
 
-IMG_SIZE = 384
+IMG_SIZE = 224
 
 
 def load_image(path):

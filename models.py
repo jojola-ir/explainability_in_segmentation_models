@@ -1,56 +1,58 @@
 import torch
 import torch.nn as nn
 
-IMG_SIZE = 384
+IMG_SIZE = 224
 
 class PatchEmbed(nn.Module):
-    """Splits image into patches and embed them.
+    """Split image into patches and then embed them.
     Parameters
     ----------
     img_size : int
-        Size of the image (m*m).
+        Size of the image (it is a square).
     patch_size : int
-        Size of a patch (n*n).
-    input_chan : int
+        Size of the patch (it is a square).
+    in_chans : int
         Number of input channels.
     embed_dim : int
-        Dimension of the embedding.
-
+        The emmbedding dimension.
     Attributes
     ----------
-    nb_patches : int
-        Number of patches of the image.
-    embed : nn.Conv2d
-        Convolutional layer that splits image to patches and embed them.
+    n_patches : int
+        Number of patches inside of our image.
+    proj : nn.Conv2d
+        Convolutional layer that does both the splitting into patches
+        and their embedding.
     """
-    def __init__(self, img_size, patch_size, input_chan=3, embed_dim=768):
+    def __init__(self, img_size, patch_size, in_chans=3, embed_dim=768):
         super().__init__()
         self.img_size = img_size
         self.patch_size = patch_size
-        self.n_patches = (input_chan // patch_size) ** 2
+        self.n_patches = (img_size // patch_size) ** 2
+
 
         self.proj = nn.Conv2d(
-            input_chan,
-            embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size
+                in_chans,
+                embed_dim,
+                kernel_size=patch_size,
+                stride=patch_size,
         )
 
     def forward(self, x):
-        """Runs forward pass.
+        """Run forward pass.
         Parameters
         ----------
         x : torch.Tensor
-           Shape : (n_samples, input_chan, img_size, img_size)
-
+            Shape `(n_samples, in_chans, img_size, img_size)`.
         Returns
         -------
         torch.Tensor
-            Shape : (n_samples, n_patches, embed_dim)
+            Shape `(n_samples, n_patches, embed_dim)`.
         """
-        x = self.proj(x) # (n_samples, embed_dim, n_patches ** 0.5, n_patches ** 0.5)
-        x = x.flatten(2) # (n_sample, embed_dim, n_patches)
-        x = x.transpose(1, 2) # (n_sample, n_patches, embed_dim)
+        x = self.proj(
+                x
+            )  # (n_samples, embed_dim, n_patches ** 0.5, n_patches ** 0.5)
+        x = x.flatten(2)  # (n_samples, embed_dim, n_patches)
+        x = x.transpose(1, 2)  # (n_samples, n_patches, embed_dim)
 
         return x
 
@@ -69,7 +71,6 @@ class Attention(nn.Module):
         Dropout probability applied to the query, key and value tensors.
     proj_p : float
         Dropout probability applied to the output tensor.
-
     Attributes
     ----------
     scale : float
@@ -94,14 +95,12 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_p)
 
-
     def forward(self, x):
         """Run forward pass.
         Parameters
         ----------
         x : torch.Tensor
             Shape `(n_samples, n_patches + 1, dim)`.
-
         Returns
         -------
         torch.Tensor
@@ -152,7 +151,6 @@ class MLP(nn.Module):
         Number of output features.
     p : float
         Dropout probability.
-
     Attributes
     ----------
     fc : nn.Linear
@@ -164,7 +162,6 @@ class MLP(nn.Module):
     drop : nn.Dropout
         Dropout layer.
     """
-
     def __init__(self, in_features, hidden_features, out_features, p=0.):
         super().__init__()
         self.fc1 = nn.Linear(in_features, hidden_features)
@@ -178,15 +175,14 @@ class MLP(nn.Module):
         ----------
         x : torch.Tensor
             Shape `(n_samples, n_patches + 1, in_features)`.
-
         Returns
         -------
         torch.Tensor
             Shape `(n_samples, n_patches +1, out_features)`
         """
         x = self.fc1(
-            x
-        )  # (n_samples, n_patches + 1, hidden_features)
+                x
+        ) # (n_samples, n_patches + 1, hidden_features)
         x = self.act(x)  # (n_samples, n_patches + 1, hidden_features)
         x = self.drop(x)  # (n_samples, n_patches + 1, hidden_features)
         x = self.fc2(x)  # (n_samples, n_patches + 1, out_features)
@@ -195,7 +191,7 @@ class MLP(nn.Module):
         return x
 
 
-class TransformerBlock(nn.Module):
+class Block(nn.Module):
     """Transformer block.
     Parameters
     ----------
@@ -210,7 +206,6 @@ class TransformerBlock(nn.Module):
         If True then we include bias to the query, key and value projections.
     p, attn_p : float
         Dropout probability.
-
     Attributes
     ----------
     norm1, norm2 : LayerNorm
@@ -244,7 +239,6 @@ class TransformerBlock(nn.Module):
         ----------
         x : torch.Tensor
             Shape `(n_samples, n_patches + 1, dim)`.
-
         Returns
         -------
         torch.Tensor
@@ -280,7 +274,6 @@ class VisionTransformer(nn.Module):
         If True then we include bias to the query, key and value projections.
     p, attn_p : float
         Dropout probability.
-
     Attributes
     ----------
     patch_embed : PatchEmbed
@@ -328,7 +321,7 @@ class VisionTransformer(nn.Module):
 
         self.blocks = nn.ModuleList(
             [
-                TransformerBlock(
+                Block(
                     dim=embed_dim,
                     n_heads=n_heads,
                     mlp_ratio=mlp_ratio,
@@ -350,7 +343,6 @@ class VisionTransformer(nn.Module):
         ----------
         x : torch.Tensor
             Shape `(n_samples, in_chans, img_size, img_size)`.
-
         Returns
         -------
         logits : torch.Tensor
@@ -375,68 +367,6 @@ class VisionTransformer(nn.Module):
         x = self.head(cls_token_final)
 
         return x
-
-'''
-class ConvBlock(nn.Module):
-    """Convolutional block.
-    Parameters
-    ----------
-    in_chans : int
-        Number of input channels.
-    out_chans : int
-        Number of output channels.
-    kernel_size : int
-        Kernel size.
-    """
-    def __init__(self, in_chans, out_chans, depth, kernel_size=3):
-        super().__init__()
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_chans, out_chans, kernel_size, 1, 1, bias=False),
-            nn.Conv2d(out_chans, out_chans, kernel_size, 1, 1, bias=False),
-            nn.ReLU(inplace=True),
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(in_chans, out_chans, kernel_size, 1, 1, bias=False),
-            nn.Conv2d(out_chans, out_chans, kernel_size, 1, 1, bias=False),
-            nn.Conv2d(out_chans, out_chans, kernel_size, 1, 1, bias=False),
-            nn.ReLU(inplace=True)
-        )
-
-    def forward(self, x):
-        """Run forward pass.
-        Parameters
-        ----------
-        x : torch.Tensor
-            Shape `(n_samples, in_chans, height, width)`.
-
-        Returns
-        -------
-        torch.Tensor
-            Shape `(n_samples, out_chans, height, width)`.
-        """
-        if
-        return self.conv(x)
-
-
-class VGG(nn.Module):
-    """Simplified implementation of the VGG architecture.
-        Parameters
-        ----------
-        img_size : int
-            Both height and the width of the image (it is a square).
-        in_chans : int
-            Number of input channels.
-        n_classes : int
-            Number of classes.
-        depth : int
-            Number of blocks.
-
-        Attributes
-        ----------
-
-        """
-    def __init__(self, img_size=IMG_SIZE, in_chans=3, n_classes=1000, depth=12):
-        super().__init__()'''
 
 
 if __name__ == '__main__':
