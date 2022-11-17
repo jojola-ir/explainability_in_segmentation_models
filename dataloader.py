@@ -27,7 +27,7 @@ def load_image(path):
 
 def transformations():
     transform = transforms.Compose([
-        transforms.Resize(IMG_SIZE),
+        transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
