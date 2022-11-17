@@ -63,7 +63,7 @@ if __name__ == "__main__":
     weights, layers, count = architecture(model)
 
     model = model.to(device)
-    print(model)
+
     data_path = "../datasets/birds/"
     results_path = "results/"
 
@@ -72,10 +72,6 @@ if __name__ == "__main__":
     image_path = join(data_path)
 
     for root, dir, files in os.walk(data_path):
-        """if len(dir):
-            for d in dir:
-                if not os.path.exists(join(results_path, d)):
-                    os.makedirs(results_path + d)"""
 
         for f in files:
             if f.endswith(".jpg"):
@@ -86,6 +82,6 @@ if __name__ == "__main__":
                 image = image.to(device)
 
                 d = root.split("/")[-1]
-                print("Processing {}/{}".format(d, f))
+                print("\nProcessing {}/{}".format(d, f))
 
                 feature_maps(model, image, f, d, model_name)
