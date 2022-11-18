@@ -15,7 +15,7 @@ from PIL import Image
 
 from dataloader import load_image, transformations
 from models import VisionTransformer
-from utils import feature_maps
+from utils import feature_maps, saliency_maps
 from weights import load_weights
 
 
@@ -58,13 +58,14 @@ if __name__ == "__main__":
     else:
         device = "cpu"
 
-    model_name = "vgg16"
+    model_name = "ViT"
     model = model_builder(model_name)
     weights, layers, count = architecture(model)
 
     model = model.to(device)
 
-    data_path = "../datasets/birds/"
+    data_path = "../datasets/imagenet_mini/"
+    data_name = data_path.split("/")[-2]
     results_path = "results/"
 
     transform = transformations()
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     for root, dir, files in os.walk(data_path):
 
         for f in files:
-            if f.endswith(".jpg"):
+            if f.endswith(".jpg") or f.endswith(".JPEG"):
                 image = Image.open(join(root, f))
 
                 image = transform(image)
@@ -84,4 +85,4 @@ if __name__ == "__main__":
                 d = root.split("/")[-1]
                 print("\nProcessing {}/{}".format(d, f))
 
-                feature_maps(model, image, f, d, model_name)
+                saliency_maps(model, image, f, d, model_name, data_name)

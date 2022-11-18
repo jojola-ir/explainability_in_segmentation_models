@@ -3,8 +3,11 @@ from os.path import join
 
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
+
 import torchvision
 from torchvision import models
+from torchvis.selflib import util
 
 import timm
 
@@ -16,9 +19,9 @@ from dataloader import transformations
 
 
 
-def feature_maps(model, image, image_name, directory, model_name):
+def feature_maps(model, image, image_name, directory, model_name, data_name):
     img_activations_dir = join(image_name.split(".")[0])
-    res_path = join("results/", model_name)
+    res_path = join(join("results/", model_name), data_name)
 
     activations = {}
 
@@ -50,7 +53,7 @@ def feature_maps(model, image, image_name, directory, model_name):
                     imgplot = plt.imshow(activations[f][0, 8 * i + j])
                     a.axis("off")
 
-            save_dir = join(join(res_path, directory), img_activations_dir)
+            save_dir = join(join(join(res_path, "feature_maps"), directory), img_activations_dir)
 
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
@@ -85,7 +88,7 @@ def feature_maps(model, image, image_name, directory, model_name):
                     imgplot = plt.imshow(to_show)
                     a.axis("off")
 
-            save_dir = join(join(res_path, directory), img_activations_dir)
+            save_dir = join(join(join(res_path, "feature_maps"), directory), img_activations_dir)
 
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
@@ -94,3 +97,42 @@ def feature_maps(model, image, image_name, directory, model_name):
             plt.savefig(str("{}/{}".format(save_dir, fname)),
                         bbox_inches='tight')
             plt.close()
+
+
+def saliency_maps(model, image, image_name, directory, model_name, data_name):
+    img_activations_dir = join(image_name.split(".")[0])
+    res_path = join(join("results/", model_name), data_name)
+
+    image = Variable(image, requires_grad=True)
+
+    model.eval()
+
+    scores = model(image)
+    # Get the index corresponding to the maximum score and the maximum score itself.
+    score_max_index = scores.argmax()
+    score_max = scores[0, score_max_index]
+    '''
+    backward function on score_max performs the backward pass in the computation graph and calculates the gradient of 
+    score_max with respect to nodes in the computation graph
+    '''
+    score_max.backward()
+    '''
+    Saliency would be the gradient with respect to the input image now. But note that the input image has 3 channels,
+    R, G and B. To derive a single class saliency value for each pixel (i, j),  we take the maximum magnitude
+    across all colour channels.
+    '''
+    saliency, _ = torch.max(image.grad.data.abs(), dim=1)
+    saliency = saliency.to("cpu").numpy()
+
+    plt.figure(figsize=(15,15))
+    plt.imshow(saliency[0], cmap='hot')
+    plt.axis("off")
+
+    save_dir = join(join(join(res_path, "saliency_maps"), directory), img_activations_dir)
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    plt.savefig(str("{}/{}".format(save_dir, image_name)),
+                bbox_inches='tight')
+    plt.close()
