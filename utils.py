@@ -140,63 +140,6 @@ def saliency_maps(model, image, image_name, directory, model_name, data_name):
     plt.close()
 
 
-def activation_maximization_(model, selected_filter, model_name):
-    res_path = join("results/", model_name)
-
-    transform = transformations()
-
-    random_image = np.uint8(np.random.uniform(0, 255, (224, 224, 3)))
-    image = Image.fromarray(random_image)
-    image = transform(image)
-    image = Variable(image, requires_grad=True)
-
-    # Define the optimizer
-    optimizer = optim.Adam([image], lr=0.1)
-
-    if model_name == "vgg16":
-        length = len(model.features)
-        layers_enum = model.features
-        selected_layers = [0, 10, 24, 28]
-    elif model_name == "ViT":
-        length = len(model.blocks)
-        layers_enum = model.blocks
-        selected_layers = [0, 2, 5, 11]
-
-    for selected_layer in selected_layers:
-        for i in range(0, length):
-            optimizer.zero_grad()
-
-            x = image
-            for idx, layer in enumerate(layers_enum):
-                print(x.shape)
-                x = layer(x)
-
-                if idx == selected_layer:
-                    break
-
-            output = x[0, selected_filter]
-            loss = -torch.mean(output)
-            print("Iteration: {}, Loss: {}".format(i, loss.item()))
-
-            loss.backward()
-            optimizer.step()
-            created_image = image.data.cpu().numpy().squeeze()
-
-            if i % 5 == 0:
-                plt.figure(figsize=(50,50))
-                plt.imshow(created_image)
-                plt.axis("off")
-
-                save_dir = join(join(res_path, "activation_maximization"), "layer_{}".format(selected_layer))
-
-                if not os.path.exists(save_dir):
-                    os.makedirs(save_dir)
-
-                plt.savefig(str("{}/{}_{}_{}".format(save_dir, selected_layer, i)),
-                            bbox_inches='tight')
-                plt.close()
-
-
 def activation_maximization(model, selected_filter, model_name):
     res_path = join("results/", model_name)
 
