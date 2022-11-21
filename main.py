@@ -15,7 +15,7 @@ from PIL import Image
 
 from dataloader import load_image, transformations
 from models import VisionTransformer
-from utils import feature_maps, saliency_maps
+from utils import activation_maximization, feature_maps, saliency_maps
 from weights import load_weights
 
 
@@ -58,11 +58,11 @@ if __name__ == "__main__":
     else:
         device = "cpu"
 
-    model_name = "ViT"
+    model_name = "vgg16"
     model = model_builder(model_name)
     weights, layers, count = architecture(model)
 
-    model = model.to(device)
+    model = model.to("cpu")
 
     data_path = "../datasets/imagenet_mini/"
     data_name = data_path.split("/")[-2]
@@ -72,7 +72,11 @@ if __name__ == "__main__":
 
     image_path = join(data_path)
 
-    for root, dir, files in os.walk(data_path):
+    # activation maximization
+    selected_filter = 5
+    activation_maximization(model, selected_filter, model_name)
+
+    """for root, dir, files in os.walk(data_path):
 
         for f in files:
             if f.endswith(".jpg") or f.endswith(".JPEG"):
@@ -85,4 +89,7 @@ if __name__ == "__main__":
                 d = root.split("/")[-1]
                 print("\nProcessing {}/{}".format(d, f))
 
-                saliency_maps(model, image, f, d, model_name, data_name)
+                # activation maximization
+                selected_filter = 5
+                activation_maximization(model, selected_filter, d, model_name, data_name)"""
+
