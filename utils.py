@@ -3,6 +3,9 @@ from os.path import join
 
 import torch
 import torch.nn as nn
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torch import optim
 from torch.autograd import Variable
 
@@ -17,7 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from dataloader import preprocess_image, recreate_image, transformations
+from dataloader import recreate_image, transformations
 
 
 
@@ -140,7 +143,7 @@ def saliency_maps(model, image, image_name, directory, model_name, data_name):
     plt.close()
 
 
-def activation_maximization(model, selected_filter, model_name):
+def activation_maximization(model, model_name):
     res_path = join("results/", model_name)
 
     transform = transformations()
@@ -154,6 +157,10 @@ def activation_maximization(model, selected_filter, model_name):
     optimizer = optim.Adam([image], lr=0.1)
     epochs = 100
 
+    if model_name == "ViT":
+        embedding = model.patch_embed
+        image = embedding(image)
+
     if model_name == "vgg16":
         layers_enum = model.features
         selected_layers = [0, 10, 24, 28]
@@ -163,36 +170,62 @@ def activation_maximization(model, selected_filter, model_name):
 
     for selected_layer in selected_layers:
         print("\nProcessing layer: {}".format(selected_layer))
-        for epoch in range(epochs):
-            optimizer.zero_grad()
+        for selected_filter in range(0, 64, 16):
+            print("\nProcessing filter: {}".format(selected_filter))
+            for epoch in range(1, epochs + 1):
+                optimizer.zero_grad()
 
-            x = image
-            for idx, layer in enumerate(layers_enum):
-                x = layer(x)
+                x = image
+                for idx, layer in enumerate(layers_enum):
+                    x = layer(x)
 
-                if idx == selected_layer:
-                    break
+                    if idx == selected_layer:
+                        break
 
-            output = x[0, selected_filter]
-            loss = -torch.mean(output)
-            print("Iteration: {}, Loss: {}".format(epoch, loss.item()))
+                output = x[0, selected_filter]
+                loss = -torch.mean(output)
+                print("Iteration: {}, Loss: {}".format(epoch, loss.item()))
 
-            loss.backward()
-            optimizer.step()
-            """created_image = image.data.to("cpu").numpy()
-            created_image = np.uint8(created_image).transpose(1, 2, 0)"""
-            created_image = recreate_image(image)
+                loss.backward()
+                optimizer.step()
+                """created_image = image.data.to("cpu").numpy()
+                created_image = np.uint8(created_image).transpose(1, 2, 0)"""
+                created_image = recreate_image(image, model_name)
 
-            if epoch % 5 == 0:
-                plt.figure(figsize=(50,50))
-                plt.imshow(created_image)
-                plt.axis("off")
+                if epoch % 5 == 0:
+                    plt.figure(figsize=(30,30))
+                    img_plot = plt.imshow(created_image)
+                    plt.axis("off")
 
-                save_dir = join(join(res_path, "activation_maximization"), "layer_{}".format(selected_layer))
+                    save_dir = join(join(join(res_path, "activation_maximization"),
+                                         "layer_{}".format(selected_layer)),
+                                    "filter_{}".format(selected_filter))
 
-                if not os.path.exists(save_dir):
-                    os.makedirs(save_dir)
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
 
-                plt.savefig(str("{}/{}_{}".format(save_dir, selected_layer, epoch)),
-                            bbox_inches='tight')
-                plt.close()
+                    plt.savefig(str("{}/{}_{}".format(save_dir,selected_layer, epoch)),
+                                bbox_inches='tight')
+                    plt.close()
+
+
+def grad_cam(model, image, image_name, directory, model_name, data_name):
+    img_activations_dir = join(image_name.split(".")[0])
+    res_path = join(join("results/", model_name), data_name)
+
+    if model_name == "vgg16":
+        layers_enum = model.features
+        selected_layers = [0, 10, 24, 28]
+    elif model_name == "ViT":
+        layers_enum = model.blocks
+        selected_layers = [0, 2, 5, 11]
+
+    for selected_layer in selected_layers:
+        print("\nProcessing layer: {}".format(selected_layer))
+
+        cam = GradCAM(model=model, target_layer=selected_layer, use_cuda=False)
+        targets = [ClassifierOutputTarget(281)]
+
+        grayscale_cam = cam(input_tensor=image, targets=targets)
+        grayscale_cam = grayscale_cam[0, :]
+        visualization = show_cam_on_image(image, grayscale_cam, use_rgb=True)

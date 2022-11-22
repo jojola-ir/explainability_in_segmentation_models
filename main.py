@@ -58,7 +58,7 @@ if __name__ == "__main__":
     else:
         device = "cpu"
 
-    model_name = "vgg16"
+    model_name = "ViT"
     model = model_builder(model_name)
     weights, layers, count = architecture(model)
 
@@ -73,8 +73,7 @@ if __name__ == "__main__":
     image_path = join(data_path)
 
     # activation maximization
-    selected_filter = 5
-    activation_maximization(model, selected_filter, model_name)
+    activation_maximization(model, model_name)
 
     """for root, dir, files in os.walk(data_path):
 

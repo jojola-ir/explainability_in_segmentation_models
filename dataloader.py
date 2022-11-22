@@ -1,5 +1,6 @@
 import copy
 
+import cv2
 import torch
 import torch.nn as nn
 import torchvision
@@ -39,7 +40,7 @@ def transformations():
     return transform
 
 
-def recreate_image(im_as_var):
+def recreate_image(im_as_var, model_name):
     """
         Recreates images from a torch variable, sort of reverse preprocessing
     Args:
@@ -47,6 +48,14 @@ def recreate_image(im_as_var):
     returns:
         recreated_im (numpy arr): Recreated image in array
     """
+    if model_name == "ViT":
+        print(im_as_var[0].shape)
+        for i in range(8):
+            for j in range(8):
+                im_as_var = im_as_var[0, :, 8 * i + j].reshape((14, 14))
+        print(im_as_var.shape)
+        im_as_var = cv2.resize(np.array(im_as_var), (224, 224))
+
     reverse_mean = [-0.485, -0.456, -0.406]
     reverse_std = [1/0.229, 1/0.224, 1/0.225]
     recreated_im = copy.copy(im_as_var.data.numpy()[0])
