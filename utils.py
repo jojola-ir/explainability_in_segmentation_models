@@ -1,3 +1,4 @@
+import copy
 import os
 from os.path import join
 
@@ -274,7 +275,7 @@ def vit_activation_maximization(model, selected_layers, selected_filters, device
 
     for selected_layer in selected_layers:
         print("\nProcessing layer: {}".format(selected_layer))
-        vit = model.copy()
+        vit = copy.deepcopy(model)
         for block in range(selected_layer, len(vit.blocks)):
             vit.blocks[block] = Identity()
         vit.norm = Identity()
@@ -284,7 +285,7 @@ def vit_activation_maximization(model, selected_layers, selected_filters, device
 
         for selected_filter in selected_filters:
             random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
-            image = load_image(random_image, device)
+            image = load_image(random_image)
             optimizer = optim.Adam([image], lr=0.1)
 
             for epoch in range(1, epochs + 1):

@@ -21,9 +21,10 @@ from weights import load_weights
 
 def model_builder(model_name):
     if model_name == "ViT":
-        model = load_weights("vit_base_patch16_224", save=False)
+        model = timm.create_model("vit_base_patch16_224", pretrained = True, global_pool = "")
+        #model = load_weights("vit_base_patch16_224", save=False)
     elif model_name == "vgg16":
-        model = models.vgg16(pretrained=True)
+        model = models.vgg16(weights="VGG16_Weights.IMAGENET1K_V1")
 
     return model
 
@@ -53,10 +54,12 @@ if __name__ == "__main__":
 
     if torch.cuda.is_available():
         device = "cuda"
-    #elif torch.backends.mps.is_available():
-        #device = "mps"
+    elif torch.backends.mps.is_available():
+        device = "mps"
     else:
         device = "cpu"
+
+    print("Device : {}".format(device))
 
     model_name = "vgg16"
     model = model_builder(model_name)
