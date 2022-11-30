@@ -15,7 +15,7 @@ from PIL import Image
 
 from dataloader import load_image, transformations
 from models import VisionTransformer
-from utils import activation_maximization, feature_maps, saliency_maps
+from utils import *
 from weights import load_weights
 
 
@@ -53,16 +53,16 @@ if __name__ == "__main__":
 
     if torch.cuda.is_available():
         device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
+    #elif torch.backends.mps.is_available():
+        #device = "mps"
     else:
         device = "cpu"
 
-    model_name = "ViT"
+    model_name = "vgg16"
     model = model_builder(model_name)
     weights, layers, count = architecture(model)
 
-    model = model.to("cpu")
+    model = model.to(device)
 
     data_path = "../datasets/imagenet_mini/"
     data_name = data_path.split("/")[-2]
@@ -73,7 +73,9 @@ if __name__ == "__main__":
     image_path = join(data_path)
 
     # activation maximization
-    activation_maximization(model, model_name)
+    selected_layers = range(0, len(model.features) + 1)
+    selected_filters = range(0, 64, 8)
+    vgg_activation_maximization(model, selected_layers, selected_filters, device)
 
     """for root, dir, files in os.walk(data_path):
 

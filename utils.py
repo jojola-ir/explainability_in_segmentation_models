@@ -20,8 +20,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from dataloader import recreate_image, transformations
+from dataloader import load_image, recreate_image, transformations
 
+
+class Identity(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x
 
 
 def feature_maps(model, image, image_name, directory, model_name, data_name):
@@ -207,6 +214,109 @@ def activation_maximization(model, model_name):
                     plt.savefig(str("{}/{}_{}".format(save_dir,selected_layer, epoch)),
                                 bbox_inches='tight')
                     plt.close()
+
+
+def vgg_activation_maximization(model, selected_layers, selected_filters, device):
+    res_path = join("results/", "vgg16")
+
+    epochs = 100
+
+    for selected_layer in selected_layers:
+        print("\nProcessing layer: {}".format(selected_layer))
+        vgg = model.features
+        vgg = vgg[:selected_layer + 1]
+        vgg = vgg.to(device)
+        for selected_filter in selected_filters:
+            random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
+            image = load_image(random_image, device)
+            optimizer = optim.Adam([image], lr=0.1)
+
+            for epoch in range(1, epochs + 1):
+                optimizer.zero_grad()
+
+                x = image
+                for idx, layer in enumerate(vgg):
+                    x = layer(x)
+
+                    if idx == selected_layer:
+                        break
+
+                output = x[0, selected_filter]
+                loss = -torch.mean(output)
+
+                loss.backward()
+                optimizer.step()
+
+                created_image = recreate_image(image)
+
+                if epoch == epochs:
+                    plt.figure(figsize=(30, 30))
+                    img_plot = plt.imshow(created_image)
+                    plt.axis("off")
+
+                    save_dir = join(join(res_path, "activation_maximization"),
+                                    "layer_{}".format(selected_layer))
+
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+
+                    plt.savefig(str("{}/{}_{}".format(save_dir, selected_layer, selected_filter)),
+                                bbox_inches='tight')
+                    plt.close()
+
+            print("Layer {} / filter {} - Loss: {}".format(selected_layer, selected_filter, loss.item()))
+
+
+def vit_activation_maximization(model, selected_layers, selected_filters, device):
+    res_path = join("results/", "ViT")
+
+    epochs = 100
+
+    for selected_layer in selected_layers:
+        print("\nProcessing layer: {}".format(selected_layer))
+        vit = model.copy()
+        for block in range(selected_layer, len(vit.blocks)):
+            vit.blocks[block] = Identity()
+        vit.norm = Identity()
+        vit.fc_norm = Identity()
+        vit.head = Identity()
+        vit = vit.to(device)
+
+        for selected_filter in selected_filters:
+            random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
+            image = load_image(random_image, device)
+            optimizer = optim.Adam([image], lr=0.1)
+
+            for epoch in range(1, epochs + 1):
+                optimizer.zero_grad()
+
+                x = image
+
+                output = vit(x)
+                loss = -torch.mean(output[0, :, selected_filter])
+
+                loss.backward()
+                optimizer.step()
+
+                created_image = recreate_image(image)
+
+                if epoch == epochs:
+
+                    plt.figure(figsize=(30, 30))
+                    img_plot = plt.imshow(created_image)
+                    plt.axis("off")
+
+                    save_dir = join(join(res_path, "activation_maximization"),
+                                    "layer_{}".format(selected_layer))
+
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+
+                    plt.savefig(str("{}/{}_{}".format(save_dir, selected_layer, selected_filter)),
+                                bbox_inches='tight')
+                    plt.close()
+
+            print("Layer {} / filter {} - Loss: {}".format(selected_layer, selected_filter, loss.item()))
 
 
 def grad_cam(model, image, image_name, directory, model_name, data_name):
