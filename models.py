@@ -371,52 +371,65 @@ class VisionTransformer(nn.Module):
         return x
 
 
-class VGG(nn.Module):
-    def __init__(self):
-        super(VGG, self).__init__()
+class NetworkFC(nn.Module):
+    """Simple CNN implementation.
+    Parameters
+    ----------
+    fc_in_features : int
+        Size of first FC layer.
+    conv_in_features : int
+        Shape of first up-conv layer.
+    """
+    def __init__(self, fc_in_features, conv_in_features, fc_hidden_features=3, conv_depth=5):
+        super(NetworkFC, self).__init__()
+        self.fc = nn.ModuleList()
+        self.conv = nn.ModuleList()
 
-        # get the pretrained VGG19 network
-        self.vgg = models.vgg16(pretrained=True)
+        out_fc_features = 4096
 
-        # disect the network to access its last convolutional layer
-        self.features_conv = self.vgg.features[:30]
+        for fc_features in range(fc_hidden_features):
+            self.fc.append(nn.Linear(fc_in_features, out_fc_features))
+            fc_in_features = out_fc_features
 
-        # get the max pool of the features stem
-        self.max_pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+        for conv_features in range(conv_depth):
+            features = conv_in_features // 2 ** conv_features
+            if conv_features == 0:
+                self.conv.append(nn.ConvTranspose2d(features, features, kernel_size=2, stride=2))
+            else:
+                self.conv.append(nn.ConvTranspose2d(features*2, features, kernel_size=2, stride=2))
 
-        # get the classifier of the vgg19
-        self.classifier = self.vgg.classifier
-
-        # placeholder for the gradients
-        self.gradients = None
-
-    # hook for the gradients of the activations
-    def activations_hook(self, grad):
-        self.gradients = grad
 
     def forward(self, x):
-        x = self.features_conv(x)
-
-        # register the hook
-        h = x.register_hook(self.activations_hook)
-
-        # apply the remaining pooling
-        x = self.max_pool(x)
-        x = x.view((1, -1))
-        x = self.classifier(x)
+        for fc in self.conv:
+            x = fc(x)
+            print(x.shape)
+        #x = x.view(-1, -1, 256)
+        #print(x.shape)
         return x
 
-    # method for the gradient extraction
-    def get_activations_gradient(self):
-        return self.gradients
 
-    # method for the activation exctraction
-    def get_activations(self, x):
-        return self.features_conv(x)
+def build_fc_reconstruction_model(input_shape, output_shape):
+    """Builds a simple CNN model for image reconstruction
+    from fully connected layer.
+    Parameters
+    ----------
+    input_shape : tuple
+        Shape of the input tensor.
+    output_shape : tuple
+        Shape of the output tensor.
+    Returns
+    -------
+    torch.nn.Module
+        Fully connected model.
+    """
+
+    model = NetworkFC(input_shape, output_shape)
+
+    return model
+
 
 
 if __name__ == '__main__':
-    vgg = VGG()
-
-    # set the evaluation mode
-    vgg.eval()
+    x = torch.randn(1, 256, 4, 4)
+    model = NetworkFC(1000, 256)
+    model(x).shape

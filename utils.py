@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from dataloader import load_image, recreate_image, transformations
+from models import build_fc_reconstruction_model
 
 
 class Identity(nn.Module):
@@ -340,3 +341,12 @@ def grad_cam(model, image, image_name, directory, model_name, data_name):
         grayscale_cam = cam(input_tensor=image, targets=targets)
         grayscale_cam = grayscale_cam[0, :]
         visualization = show_cam_on_image(image, grayscale_cam, use_rgb=True)
+
+
+def feature_inversion(image, model, model_name, device):
+    res_path = join("results/", model_name)
+
+    image = load_image(image, device)
+
+    conv_net = models.alexnet(weights="AlexNet_Weights.IMAGENET1K_V1")
+    fc_net = build_fc_reconstruction_model(1000, 256)
