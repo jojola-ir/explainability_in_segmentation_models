@@ -476,7 +476,8 @@ def build_model_reconstruction_from_layer(fc_in_features, conv_in_features, orig
 
 
 if __name__ == '__main__':
-    #x = torch.randn(1, 1000)
-    x = torch.randn(1, 256, 4, 4)
-    model = build_model_reconstruction_from_layer(1000, 256, "conv")
+    x = torch.randn(1, 1000)
+    model = build_model_reconstruction_from_layer(1000, 256, "fc")
+    #x = torch.randn(1, 256, 4, 4)
+    #model = build_model_reconstruction_from_layer(1000, 256, "conv")
     print(model(x).shape)
