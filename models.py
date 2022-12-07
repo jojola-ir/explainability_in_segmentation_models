@@ -1,7 +1,7 @@
 import numpy as np
+import timm
 import torch
 import torch.nn as nn
-import torchvision
 from torchvision import models
 
 IMG_SIZE = 224
@@ -372,6 +372,25 @@ class VisionTransformer(nn.Module):
         return x
 
 
+class ReversedConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=2, stride=2):
+        super(ReversedConvBlock, self).__init__()
+        self.block = nn.ModuleList()
+
+        self.block.append(nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride))
+
+        conv_in_channels = self.block[0].out_channels
+
+        for level in range(2):
+            self.block.append(nn.Conv2d(conv_in_channels, conv_in_channels, kernel_size=3, stride=1, padding=1))
+            self.block.append(nn.ReLU(inplace=True))
+
+    def forward(self, x):
+        for layer in self.block:
+            x = layer(x)
+        return x
+
+
 class NetworkFC(nn.Module):
     """Simple CNN implementation.
     Parameters
@@ -388,7 +407,6 @@ class NetworkFC(nn.Module):
         super(NetworkFC, self).__init__()
         self.fc = nn.ModuleList()
         self.conv = nn.ModuleList()
-        self.relu = nn.ReLU()
 
         out_fc_features = 4096
 
@@ -396,25 +414,28 @@ class NetworkFC(nn.Module):
             self.fc.append(nn.Linear(fc_in_features, out_fc_features))
             fc_in_features = out_fc_features
 
-        for conv_features in range(conv_depth - 1):
+        for conv_features in range(conv_depth):
             features = conv_in_features // 2 ** conv_features
             if conv_features == 0:
-                self.conv.append(nn.ConvTranspose2d(features, features, kernel_size=2, stride=2))
+                self.conv.append(ReversedConvBlock(features, features))
+                #self.conv.append(nn.ConvTranspose2d(features, features, kernel_size=2, stride=2))
             else:
-                self.conv.append(nn.ConvTranspose2d(features*2, features, kernel_size=2, stride=2))
+                self.conv.append(ReversedConvBlock(features*2, features))
+                #self.conv.append(nn.ConvTranspose2d(features*2, features, kernel_size=2, stride=2))
 
-        out_features = self.conv[-1].out_channels
+        out_features = self.conv[-1].block[-2].out_channels
         last_features = 3
-        self.conv.append(nn.ConvTranspose2d(out_features, last_features, kernel_size=2, stride=2))
+        self.conv.append(ReversedConvBlock(out_features, last_features))
+        #self.conv.append(nn.ConvTranspose2d(out_features, last_features, kernel_size=2, stride=2))
 
     def forward(self, x):
         for fc in self.fc:
-            x = self.relu(fc(x))
+            x = fc(x)
 
         x = x.view(256, 4, 4)
 
         for conv in self.conv:
-            x = self.relu(conv(x))
+            x = conv(x)
 
         return x
 
@@ -432,52 +453,37 @@ class NetworkCNN(nn.Module):
     def __init__(self, conv_in_features, conv_depth=5):
         super(NetworkCNN, self).__init__()
         self.conv = nn.ModuleList()
-        self.relu = nn.ReLU()
 
-        for conv_features in range(conv_depth - 1):
+        for conv_features in range(conv_depth):
             features = conv_in_features // 2 ** conv_features
             if conv_features == 0:
-                self.conv.append(nn.ConvTranspose2d(features, features, kernel_size=2, stride=2))
+                self.conv.append(ReversedConvBlock(features, features))
             else:
-                self.conv.append(nn.ConvTranspose2d(features*2, features, kernel_size=2, stride=2))
+                self.conv.append(ReversedConvBlock(features * 2, features))
 
-        out_features = self.conv[-1].out_channels
+        out_features = self.conv[-1].block[-2].out_channels
         last_features = 3
-        self.conv.append(nn.ConvTranspose2d(out_features, last_features, kernel_size=2, stride=2))
+        self.conv.append(ReversedConvBlock(out_features, last_features))
 
     def forward(self, x):
         for conv in self.conv:
-            x = self.relu(conv(x))
+            x = conv(x)
 
         return x
 
 
-def build_reconstruction_model_from_layer(fc_in_features, conv_in_features, origin_layer):
-    """Builds a simple CNN model for image reconstruction
-    from fully connected layer.
-    Parameters
-    ----------
-    input_shape : tuple
-        Shape of the input tensor.
-    output_shape : tuple
-        Shape of the output tensor.
-    Returns
-    -------
-    torch.nn.Module
-        Fully connected model.
-    """
-    if origin_layer == 'fc':
-        model = NetworkFC(fc_in_features, conv_in_features)
-    elif origin_layer == 'conv':
-        model = NetworkCNN(conv_in_features)
+def model_builder(model_name):
+    if model_name == "ViT":
+        model = timm.create_model("vit_base_patch16_224", pretrained = True, global_pool = "")
+        #model = load_weights("vit_base_patch16_224", save=False)
+    elif model_name == "vgg16":
+        model = models.vgg16(weights="VGG16_Weights.IMAGENET1K_V1")
 
     return model
 
 
 
 if __name__ == '__main__':
-    x = torch.randn(1, 1000)
-    model = build_reconstruction_model_from_layer(1000, 256, "fc")
-    #x = torch.randn(1, 256, 4, 4)
-    #model = build_reconstruction_model_from_layer(1000, 256, "conv")
-    print(model(x).shape)
+    x = torch.randn(1, 3, 224, 224)
+    model = model_builder("vgg16")
+    print(np.argmax(model(x)[0].detach().numpy()))

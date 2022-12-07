@@ -1,32 +1,5 @@
-import os
-from os.path import join
-
-import torch
-import torch.nn as nn
-import torchvision
-from torchvision import models
-from torchvision.datasets import ImageFolder
-from torch.autograd import Variable
-
-import numpy as np
-import matplotlib.pyplot as plt
-import timm
-from PIL import Image
-
-from dataloader import load_image, transformations
-from models import VisionTransformer
+from models import model_builder
 from utils import *
-from weights import load_weights
-
-
-def model_builder(model_name):
-    if model_name == "ViT":
-        model = timm.create_model("vit_base_patch16_224", pretrained = True, global_pool = "")
-        #model = load_weights("vit_base_patch16_224", save=False)
-    elif model_name == "vgg16":
-        model = models.vgg16(weights="VGG16_Weights.IMAGENET1K_V1")
-
-    return model
 
 
 def architecture(model):
@@ -67,18 +40,19 @@ if __name__ == "__main__":
 
     model = model.to(device)
 
-    data_path = "../datasets/imagenet_mini/"
+    data_path = "../datasets/one_shot/"
     data_name = data_path.split("/")[-2]
     results_path = "results/"
 
-    transform = transformations()
-
-    image_path = join(data_path)
+    image_path = join(data_path, "001.jpg")
+    image = Image.open(image_path)
+    #image = load_image(image, device)
 
     # activation maximization
-    selected_layers = range(0, len(model.features) + 1)
+    selected_layers = [0, 10, 24, 28]
     selected_filters = range(0, 64, 8)
-    vgg_activation_maximization(model, selected_layers, selected_filters, device)
+    vgg_feature_inversion(image, image_path.split("/")[-1], model, selected_layers, selected_filters, device)
+    #vgg_activation_maximization(model, selected_layers, selected_filters, device)
 
     """for root, dir, files in os.walk(data_path):
 
@@ -86,14 +60,12 @@ if __name__ == "__main__":
             if f.endswith(".jpg") or f.endswith(".JPEG"):
                 image = Image.open(join(root, f))
 
-                image = transform(image)
-                image = image.unsqueeze(0)
-                image = image.to(device)
-
                 d = root.split("/")[-1]
                 print("\nProcessing {}/{}".format(d, f))
 
                 # activation maximization
-                selected_filter = 5
-                activation_maximization(model, selected_filter, d, model_name, data_name)"""
+                #activation_maximization(model, selected_filter, d, model_name, data_name)
+
+                # feature inversion
+                vgg_feature_inversion(image, f, model, selected_layers, selected_filters, device)"""
 

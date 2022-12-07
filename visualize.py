@@ -21,7 +21,7 @@ def make_gif(directory):
 
     paths = natsorted(paths)
     frames = [Image.open(path) for path in paths]
-    size = (224, 224)
+    size = (256, 256)
     for frame in frames:
         frame.thumbnail(size, Image.Resampling.LANCZOS)
     frame_one = frames[0]
@@ -30,4 +30,4 @@ def make_gif(directory):
 
 
 if __name__ == "__main__":
-    make_gif("results/vgg16/activation_maximization/")
+    make_gif("results/vgg16/feature_inversion/")

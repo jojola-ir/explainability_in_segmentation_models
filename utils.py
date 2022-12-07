@@ -2,27 +2,19 @@ import copy
 import os
 from os.path import join
 
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
+from PIL import Image
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torch import optim
 from torch.autograd import Variable
 
-import torchvision
-from torchvision import models
-from torchvis.selflib import util
-
-import timm
-
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-
 from dataloader import load_image, recreate_image, transformations
-from models import build_fc_reconstruction_model
 
 
 class Identity(nn.Module):
@@ -343,10 +335,109 @@ def grad_cam(model, image, image_name, directory, model_name, data_name):
         visualization = show_cam_on_image(image, grayscale_cam, use_rgb=True)
 
 
-def feature_inversion(image, model, model_name, device):
-    res_path = join("results/", model_name)
+def get_output_from_layer(x, model, selected_layer):
+    for idx, layer in enumerate(model):
+        x = layer(x)
+        if idx == selected_layer:
+            break
+    return x
+
+
+def vgg_feature_inversion(image, image_name, model, selected_layers, selected_filters, device):
+    res_path = join("results/", "vgg16")
+
+    def alpha_norm(input_matrix, alpha):
+        """Converts matrix to vector then calculates the alpha norm."""
+        alpha_norm = ((input_matrix.view(-1)) ** alpha).sum()
+        return alpha_norm
+
+    def total_variation_norm(input_matrix, beta):
+        """Total variation norm is the second norm in the paper
+            represented as R_V(x)."""
+        to_check = input_matrix[:, :-1, :-1]  # Trimmed: right - bottom
+        one_bottom = input_matrix[:, 1:, :-1]  # Trimmed: top - right
+        one_right = input_matrix[:, :-1, 1:]  # Trimmed: top - right
+        total_variation = (((to_check - one_bottom) ** 2 +
+                            (to_check - one_right) ** 2) ** (beta / 2)).sum()
+        return total_variation
+
+    def euclidian_loss(org_matrix, target_matrix):
+        """Euclidian loss is the main loss function in the paper
+        ||fi(x) - fi(x_0)||_2^2& / ||fi(x_0)||_2^2.
+        """
+        distance_matrix = target_matrix - org_matrix
+        euclidian_distance = alpha_norm(distance_matrix, 2)
+        normalized_euclidian_distance = euclidian_distance / alpha_norm(org_matrix, 2)
+        return normalized_euclidian_distance
 
     image = load_image(image, device)
 
-    conv_net = models.alexnet(weights="AlexNet_Weights.IMAGENET1K_V1")
-    fc_net = build_fc_reconstruction_model(1000, 256)
+    epochs = 400
+
+    for selected_layer in selected_layers:
+        print("\nProcessing layer: {}".format(selected_layer))
+        vgg = model.features
+        vgg = vgg[:selected_layer + 1]
+        vgg = vgg.to(device)
+
+        for selected_filter in selected_filters:
+            print("Filter: {}".format(selected_filter))
+            random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
+            random_image = load_image(random_image, device)
+            optimizer = optim.SGD([random_image], lr=1e4, momentum=0.9)
+
+            target = get_output_from_layer(image, vgg, selected_layer)
+
+            # Alpha regularization parameters
+            # Parameter alpha, which is actually sixth norm
+            alpha_reg_alpha = 6
+            # The multiplier, lambda alpha
+            alpha_reg_lambda = 1e-7
+
+            # Total variation regularization parameters
+            # Parameter beta, which is actually second norm
+            tv_reg_beta = 2
+            # The multiplier, lambda beta
+            tv_reg_lambda = 1e-8
+
+            for epoch in range(1, epochs + 1):
+                optimizer.zero_grad()
+
+                output = get_output_from_layer(random_image, vgg, selected_layer)
+
+                euc_loss = 1e-1 * euclidian_loss(target.detach(), output)
+                # Calculate alpha regularization
+                reg_alpha = alpha_reg_lambda * alpha_norm(random_image, alpha_reg_alpha)
+                # Calculate total variation regularization
+                reg_total_variation = tv_reg_lambda * total_variation_norm(random_image, tv_reg_beta)
+
+                loss = euc_loss + reg_alpha + reg_total_variation
+
+                loss.backward()
+                optimizer.step()
+
+                if epoch % 20 == 0:
+                    print("Epoch {} - Loss: {}".format(epoch, loss.item()))
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] *= 1 / 10
+
+                    created_image = recreate_image(random_image)
+
+                    plt.figure(figsize=(30, 30))
+                    img_plot = plt.imshow(created_image)
+                    plt.axis("off")
+
+                    save_dir = join(join(join(res_path, "feature_inversion"),
+                                         "layer_{}".format(selected_layer)),
+                                    "filter_{}".format(selected_filter))
+
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+
+                    plt.savefig(str("{}/{}".format(save_dir, image_name)),
+                                bbox_inches='tight')
+                    plt.close()
+
+                if epoch % 40 == 0:
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] *= 1 / 10

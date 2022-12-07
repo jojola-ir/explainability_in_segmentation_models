@@ -1,14 +1,9 @@
 import copy
 
-import torch
-import torch.nn as nn
-import torchvision
-from torchvision import models, transforms, utils
-from torch.autograd import Variable
-
 import numpy as np
 from PIL import Image
-
+from torch.autograd import Variable
+from torchvision import transforms
 
 IMG_SIZE = 224
 
@@ -40,7 +35,7 @@ def transformations():
 
 def recreate_image(im_as_var):
     reverse_mean = [-0.485, -0.456, -0.406]
-    reverse_std = [1/0.229, 1/0.224, 1/0.225]
+    reverse_std = [1 / 0.229, 1 / 0.224, 1 / 0.225]
     recreated_im = copy.copy(im_as_var.data.cpu().numpy()[0])
     for c in range(3):
         recreated_im[c] /= reverse_std[c]
@@ -50,4 +45,5 @@ def recreate_image(im_as_var):
     recreated_im = np.round(recreated_im * 255)
 
     recreated_im = np.uint8(recreated_im).transpose(1, 2, 0)
+
     return recreated_im
