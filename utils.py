@@ -7,14 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torch import optim
 from torch.autograd import Variable
 
-from dataloader import load_image, recreate_image, transformations
+from dataloader import load_image, recreate_image
 
 
 class Identity(nn.Module):
@@ -142,72 +141,6 @@ def saliency_maps(model, image, image_name, directory, model_name, data_name):
     plt.savefig(str("{}/{}".format(save_dir, image_name)),
                 bbox_inches='tight')
     plt.close()
-
-
-def activation_maximization(model, model_name):
-    res_path = join("results/", model_name)
-
-    transform = transformations()
-
-    random_image = np.uint8(np.random.uniform(0, 255, (224, 224, 3)))
-    image = Image.fromarray(random_image)
-    image = transform(image)
-    image = image.unsqueeze(0)
-    image = Variable(image, requires_grad=True)
-
-    optimizer = optim.Adam([image], lr=0.1)
-    epochs = 100
-
-    if model_name == "ViT":
-        embedding = model.patch_embed
-        image = embedding(image)
-
-    if model_name == "vgg16":
-        layers_enum = model.features
-        selected_layers = [0, 10, 24, 28]
-    elif model_name == "ViT":
-        layers_enum = model.blocks
-        selected_layers = [0, 2, 5, 11]
-
-    for selected_layer in selected_layers:
-        print("\nProcessing layer: {}".format(selected_layer))
-        for selected_filter in range(0, 64, 16):
-            print("\nProcessing filter: {}".format(selected_filter))
-            for epoch in range(1, epochs + 1):
-                optimizer.zero_grad()
-
-                x = image
-                for idx, layer in enumerate(layers_enum):
-                    x = layer(x)
-
-                    if idx == selected_layer:
-                        break
-
-                output = x[0, selected_filter]
-                loss = -torch.mean(output)
-                print("Iteration: {}, Loss: {}".format(epoch, loss.item()))
-
-                loss.backward()
-                optimizer.step()
-                """created_image = image.data.to("cpu").numpy()
-                created_image = np.uint8(created_image).transpose(1, 2, 0)"""
-                created_image = recreate_image(image, model_name)
-
-                if epoch % 5 == 0:
-                    plt.figure(figsize=(30,30))
-                    img_plot = plt.imshow(created_image)
-                    plt.axis("off")
-
-                    save_dir = join(join(join(res_path, "activation_maximization"),
-                                         "layer_{}".format(selected_layer)),
-                                    "filter_{}".format(selected_filter))
-
-                    if not os.path.exists(save_dir):
-                        os.makedirs(save_dir)
-
-                    plt.savefig(str("{}/{}_{}".format(save_dir,selected_layer, epoch)),
-                                bbox_inches='tight')
-                    plt.close()
 
 
 def vgg_activation_maximization(model, selected_layers, selected_filters, device):
@@ -372,7 +305,7 @@ def vgg_feature_inversion(image, image_name, model, selected_layers, selected_fi
 
     image = load_image(image, device)
 
-    epochs = 400
+    epochs = 200
 
     for selected_layer in selected_layers:
         print("\nProcessing layer: {}".format(selected_layer))
@@ -418,8 +351,109 @@ def vgg_feature_inversion(image, image_name, model, selected_layers, selected_fi
 
                 if epoch % 20 == 0:
                     print("Epoch {} - Loss: {}".format(epoch, loss.item()))
+
+                    created_image = recreate_image(random_image)
+
+                    plt.figure(figsize=(30, 30))
+                    img_plot = plt.imshow(created_image)
+                    plt.axis("off")
+
+                    save_dir = join(join(join(res_path, "feature_inversion"),
+                                         "layer_{}".format(selected_layer)),
+                                    "filter_{}".format(selected_filter))
+
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+
+                    plt.savefig(str("{}/{}".format(save_dir, image_name)),
+                                bbox_inches='tight')
+                    plt.close()
+
+                if epoch % 40 == 0:
                     for param_group in optimizer.param_groups:
                         param_group['lr'] *= 1 / 10
+
+
+def vit_feature_inversion(image, image_name, model, selected_layers, selected_filters, device):
+    res_path = join("results/", "ViT")
+
+    def alpha_norm(input_matrix, alpha):
+        """Converts matrix to vector then calculates the alpha norm."""
+        alpha_norm = ((input_matrix.view(-1)) ** alpha).sum()
+        return alpha_norm
+
+    def total_variation_norm(input_matrix, beta):
+        """Total variation norm is the second norm in the paper
+            represented as R_V(x)."""
+        to_check = input_matrix[:, :-1, :-1]  # Trimmed: right - bottom
+        one_bottom = input_matrix[:, 1:, :-1]  # Trimmed: top - right
+        one_right = input_matrix[:, :-1, 1:]  # Trimmed: top - right
+        total_variation = (((to_check - one_bottom) ** 2 +
+                            (to_check - one_right) ** 2) ** (beta / 2)).sum()
+        return total_variation
+
+    def euclidian_loss(org_matrix, target_matrix):
+        """Euclidian loss is the main loss function in the paper
+        ||fi(x) - fi(x_0)||_2^2& / ||fi(x_0)||_2^2.
+        """
+        distance_matrix = target_matrix - org_matrix
+        euclidian_distance = alpha_norm(distance_matrix, 2)
+        normalized_euclidian_distance = euclidian_distance / alpha_norm(org_matrix, 2)
+        return normalized_euclidian_distance
+
+    image = load_image(image, device)
+
+    epochs = 200
+
+    for selected_layer in selected_layers:
+        print("\nProcessing layer: {}".format(selected_layer))
+
+        vit = copy.deepcopy(model)
+        for block in range(selected_layer, len(vit.blocks)):
+            vit.blocks[block] = Identity()
+        vit.norm = Identity()
+        vit.fc_norm = Identity()
+        vit.head = Identity()
+        vit = vit.to(device)
+
+        for selected_filter in selected_filters:
+            print("Filter: {}".format(selected_filter))
+            random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
+            random_image = load_image(random_image, device)
+            optimizer = optim.SGD([random_image], lr=1e4, momentum=0.9)
+
+            target = vit(image)
+
+            # Alpha regularization parameters
+            # Parameter alpha, which is actually sixth norm
+            alpha_reg_alpha = 6
+            # The multiplier, lambda alpha
+            alpha_reg_lambda = 1e-7
+
+            # Total variation regularization parameters
+            # Parameter beta, which is actually second norm
+            tv_reg_beta = 2
+            # The multiplier, lambda beta
+            tv_reg_lambda = 1e-8
+
+            for epoch in range(1, epochs + 1):
+                optimizer.zero_grad()
+
+                output = vit(random_image)
+
+                euc_loss = 1e-1 * euclidian_loss(target.detach(), output)
+                # Calculate alpha regularization
+                reg_alpha = alpha_reg_lambda * alpha_norm(random_image, alpha_reg_alpha)
+                # Calculate total variation regularization
+                reg_total_variation = tv_reg_lambda * total_variation_norm(random_image, tv_reg_beta)
+
+                loss = euc_loss + reg_alpha + reg_total_variation
+
+                loss.backward()
+                optimizer.step()
+
+                if epoch % 20 == 0:
+                    print("Epoch {} - Loss: {}".format(epoch, loss.item()))
 
                     created_image = recreate_image(random_image)
 
