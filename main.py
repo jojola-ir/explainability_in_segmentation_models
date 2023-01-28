@@ -1,4 +1,4 @@
-from PIL.Image import Image
+from PIL import Image
 
 from models import model_builder
 from utils import *
@@ -54,8 +54,8 @@ if __name__ == "__main__":
     selected_layers = [0, 2, 5, 11]
     selected_filters = range(0, 64, 8)
     #vgg_feature_inversion(image, image_path.split("/")[-1], model, selected_layers, selected_filters, device)
-    vit_feature_inversion(image, image_path.split("/")[-1], model, selected_layers, selected_filters, device)
-    #vgg_activation_maximization(model, selected_layers, selected_filters, device)
+    #vit_feature_inversion(image, image_path.split("/")[-1], model, selected_layers, selected_filters, device)
+    vit_activation_maximization(model, selected_layers, selected_filters, device)
 
     """for root, dir, files in os.walk(data_path):
 

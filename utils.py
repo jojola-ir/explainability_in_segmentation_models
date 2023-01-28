@@ -211,7 +211,7 @@ def vit_activation_maximization(model, selected_layers, selected_filters, device
 
         for selected_filter in selected_filters:
             random_image = np.uint8(255 * np.random.normal(0, 1, (224, 224, 3)))
-            image = load_image(random_image)
+            image = load_image(random_image, device)
             optimizer = optim.Adam([image], lr=0.1)
 
             for epoch in range(1, epochs + 1):
